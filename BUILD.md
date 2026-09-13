@@ -11,7 +11,7 @@ dialogue are out of scope for this slice.
 **Local only.** The game never gets deployed. It runs on a laptop for play and for
 screen-recording the demo — no hosting, no player accounts, no web build. That drops
 a whole class of work (auth, servers, a JS build) and one class of on-stage failure.
-The only network calls are to TypeSafe, Anthropic (baseline), and W&B.
+The only network calls are to TypeSafe, OpenRouter (baseline), and W&B.
 
 ---
 
@@ -75,7 +75,7 @@ instinct/
   runtime/                 # shared, game-agnostic — the reusable core
     __init__.py
     judge.py               # choice/noul/score → routes to TypeSafe or baseline
-    baseline.py            # LLM-as-judge arm (Claude Haiku)
+    baseline.py            # LLM-as-judge arm (OpenRouter)
     memory.py              # recall() / distill() — the learning loop
     trace.py               # Weave logging helpers
     config.py              # arm switch, TTLs; reads keys from env only
@@ -320,7 +320,7 @@ Rules of engagement:
   ("and here's an agent that analyzed all of this on its own and recommended these
   changes"), never the thing the main demo relies on.
 - Prerequisite is good Weave logging, which we're doing anyway — so treat ARIA as a
-  payoff we unlock once traces are rich, not separate upfront work.
+  payoff we get once the traces are rich, not separate upfront work.
 
 ---
 
@@ -372,8 +372,8 @@ Vertical slice, in order. Each step is runnable before the next.
 5. **Weave logging.** Every judgment + per-attempt outcome. See the first charts.
 6. **Memory / learning.** `recall` before the judgment, `distill` at attempt end.
    Get the trick-stops-working behavior on screen.
-7. **Baseline arm + arm switch.** Claude Haiku as LLM-as-judge behind the same
-   interface; `RUNTIME_ARM` flag.
+7. **Baseline arm + arm switch.** A fast OpenRouter model as LLM-as-judge behind the
+   same interface; `RUNTIME_ARM` flag.
 8. **Evals harness.** Golden set, accuracy/latency/cost/A-B, learning-curve replay.
 9. **(If time) marimo tuning notebook.**
 

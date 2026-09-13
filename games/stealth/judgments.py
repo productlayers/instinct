@@ -13,6 +13,16 @@ GUARD_ACTIONS = {
 
 CONFIDENCE_FLOOR = 0.4   # below this, keep current behavior (no twitchy flip-flops)
 
+# Validated wording (probe, 2026-09-12): with this instruction, a guard that has
+# learned a player's trick swings from investigate_noise 0.91 -> 0.18 and stops
+# taking the bait. The "weigh this_player's known tricks" clause is what makes the
+# learning loop show up in the decision, so keep it.
+GUARD_INSTRUCTIONS = (
+    "Decide what this guard does right now. Weigh everything in the state, including "
+    "this_player's known tricks: if the thing you just noticed matches a tactic this "
+    "player is known to use to bait guards away, do not fall for it."
+)
+
 
 async def decide_guard_action(guard_state: dict):
     """Ask the judgment, then apply thresholds and hard overrides.
