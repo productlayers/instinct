@@ -15,8 +15,9 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 # which arm answers judgments: "typesafe" (default) or "baseline"
 RUNTIME_ARM = os.environ.get("RUNTIME_ARM", "typesafe")
 
-# short cache TTL for identical (key, state) judgments, in seconds
-JUDGE_CACHE_TTL_S = float(os.environ.get("JUDGE_CACHE_TTL_S", "0.5"))
+# short cache TTL for identical (key, state) judgments, in seconds. Low on purpose:
+# credits are plentiful, so we refresh decisions rather than hold a stale one.
+JUDGE_CACHE_TTL_S = float(os.environ.get("JUDGE_CACHE_TTL_S", "0.1"))
 
 # baseline (LLM-as-judge) arm, via W&B Inference (OpenAI-compatible, uses WANDB_API_KEY)
 BASELINE_MODEL = os.environ.get("BASELINE_MODEL", "meta-llama/Llama-3.1-8B-Instruct")

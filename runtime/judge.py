@@ -11,6 +11,7 @@ import json
 import time
 from dataclasses import dataclass
 
+import weave
 from typesafe_sdk import AsyncTypeSafeClient, Choice
 
 from runtime import baseline, config
@@ -70,21 +71,29 @@ def _cache_get(ck: str) -> Result | None:
     return res
 
 
-async def choice(key: str, state: dict, instructions: str, criteria) -> Result:
+@weave.op
+async def choice(key: str, state: dict, instructions: str, criteria, arm: str | None = None) -> Result:
     """One Choice judgment over `state`. Returns a Result (see fields above).
 
-    Routes to TypeSafe or the baseline arm by config.RUNTIME_ARM. Caches identical
-    (key, state) for a short TTL so idle NPCs don't re-pay.
+    `arm` selects the engine for this call ("typesafe" or "baseline"); it defaults to
+    config.RUNTIME_ARM. Passing it per call lets two worlds run different arms at once
+    (the side-by-side demo). Caches identical (arm, key, state) for a short TTL. Traced
+    by Weave once runtime.trace.init() has run (a no-op wrapper otherwise).
     """
-    ck = _cache_key(key, state)
+    use_arm = arm or config.RUNTIME_ARM
+    ck = _cache_key(f"{use_arm}:{key}", state)
     cached = _cache_get(ck)
     if cached is not None:
         return cached
 
     t0 = time.perf_counter()
-    if config.RUNTIME_ARM == "baseline":
-        res = await baseline.choice(state, instructions, criteria)   # step 7
-        res.arm = "baseline"
+    if use_arm == "baseline":
+        b = await baseline.choice(state, instructions, criteria)
+        res = Result(
+            pick=b["pick"], dist=b.get("dist"), confidence=b.get("confidence"),
+            arm="baseline", input_tokens=b.get("input_tokens"),
+            output_tokens=b.get("output_tokens"), model=b.get("model"),
+        )
     else:
         client = _client_or_create()
         resp = await client.system_one(
@@ -104,6 +113,12 @@ async def choice(key: str, state: dict, instructions: str, criteria) -> Result:
             request_id=getattr(resp, "request_id", None),
         )
     res.latency_ms = (time.perf_counter() - t0) * 1000.0
+    try:  # readable trace title, e.g. "G1: investigate_noise (typesafe)"
+        call = weave.get_current_call()
+        if call is not None:
+            call.set_display_name(f"{key.rsplit('.', 1)[-1]}: {res.pick} ({res.arm})")
+    except Exception:
+        pass
     _cache[ck] = (time.monotonic(), res)
     return res
 
