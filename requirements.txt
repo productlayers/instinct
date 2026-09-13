@@ -1,0 +1,6 @@
+typesafe-sdk        # the judgments
+anthropic           # baseline arm (Claude Haiku)
+weave               # tracing (pulls in wandb)
+marimo              # tuning surface (nice-to-have)
+pygame              # the game
+python-dotenv       # load .env locally
