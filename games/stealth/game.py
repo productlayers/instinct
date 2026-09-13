@@ -1,6 +1,6 @@
 """Pygame stealth level: sneak past guards to reach the exit.
 
-Step 3 (this file): playable with RULES-BASED guards — patrol, see the player and
+Step 3 (this file): playable with RULES-BASED guards, patrol, see the player and
 chase, hear a thrown noise and investigate. The guard decision is isolated in
 `guard_think()` so step 4 can swap it for a TypeSafe judgment without touching the
 rest of the game.
@@ -325,10 +325,10 @@ def draw(screen, font, world: World) -> None:
         msg = "WASD/arrows move   •   click to throw a distraction   •   reach the green exit"
         col = C_TEXT
     elif world.status == "win":
-        msg = "ESCAPED — you reached the exit.   R to restart"
+        msg = "ESCAPED, you reached the exit.   R to restart"
         col = C_WIN
     else:
-        msg = "CAUGHT — a guard spotted you.   R to restart"
+        msg = "CAUGHT, a guard spotted you.   R to restart"
         col = C_LOSE
     screen.blit(font.render(msg, True, col), (12, ROWS * TILE + 12))
 
@@ -337,7 +337,7 @@ def draw(screen, font, world: World) -> None:
 def main() -> None:
     pygame.init()
     screen = pygame.display.set_mode((W, H))
-    pygame.display.set_caption("Instinct — Stealth (step 3: rules-based guards)")
+    pygame.display.set_caption("Instinct Stealth (step 3: rules-based guards)")
     font = pygame.font.SysFont("menlo,monospace", 15)
     clock = pygame.time.Clock()
     world = load_world()

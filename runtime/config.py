@@ -18,9 +18,10 @@ RUNTIME_ARM = os.environ.get("RUNTIME_ARM", "typesafe")
 # short cache TTL for identical (key, state) judgments, in seconds
 JUDGE_CACHE_TTL_S = float(os.environ.get("JUDGE_CACHE_TTL_S", "0.5"))
 
-# baseline (LLM-as-judge) arm, via OpenRouter (OpenAI-compatible)
-BASELINE_MODEL = os.environ.get("BASELINE_MODEL", "openai/gpt-4o-mini")
-OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+# baseline (LLM-as-judge) arm, via W&B Inference (OpenAI-compatible, uses WANDB_API_KEY)
+BASELINE_MODEL = os.environ.get("BASELINE_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
+WANDB_INFERENCE_BASE_URL = os.environ.get("WANDB_INFERENCE_BASE_URL", "https://api.inference.wandb.ai/v1")
+WANDB_INFERENCE_PROJECT = os.environ.get("WANDB_INFERENCE_PROJECT", "")
 
 
 def require(name: str) -> str:

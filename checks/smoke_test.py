@@ -1,9 +1,9 @@
 """Smoke test: verify the real service paths before we build on them.
 
-Checks TypeSafe (a real judgment), Anthropic Haiku (the baseline arm), Weave
+Checks TypeSafe (a real judgment), W&B Inference (the baseline arm), Weave
 (a real trace), and that marimo imports. Loads keys from .env via python-dotenv.
 
-It NEVER prints key values — only whether each is set, plus non-secret results
+It NEVER prints key values, only whether each is set, plus non-secret results
 (latency, a trace URL, a one-word reply). Each check is isolated so one failure
 doesn't hide the others.
 
@@ -29,7 +29,7 @@ def key_status(name: str) -> str:
 
 def check_env():
     print("Keys (from .env):")
-    for k in ("TYPESAFE_API_KEY", "WANDB_API_KEY", "OPENROUTER_API_KEY"):
+    for k in ("TYPESAFE_API_KEY", "WANDB_API_KEY"):   # WANDB_API_KEY also auths the baseline
         print(f"  {k}: {key_status(k)}")
     print()
 
@@ -64,13 +64,14 @@ def check_typesafe():
         results[name] = False
 
 
-def check_openrouter():
-    name = "OpenRouter (baseline arm)"
+def check_wandb_inference():
+    name = "W&B Inference (baseline arm)"
     try:
         from openai import OpenAI
-        model = os.environ.get("BASELINE_MODEL", "openai/gpt-4o-mini")
-        base_url = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-        client = OpenAI(base_url=base_url, api_key=os.environ["OPENROUTER_API_KEY"])
+        model = os.environ.get("BASELINE_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
+        base_url = os.environ.get("WANDB_INFERENCE_BASE_URL", "https://api.inference.wandb.ai/v1")
+        project = os.environ.get("WANDB_INFERENCE_PROJECT") or None
+        client = OpenAI(base_url=base_url, api_key=os.environ["WANDB_API_KEY"], project=project)
         t0 = time.perf_counter()
         resp = client.chat.completions.create(
             model=model,
@@ -83,7 +84,7 @@ def check_openrouter():
         results[name] = True
     except Exception as e:
         print(f"[{FAIL}] {name}: {type(e).__name__}: {e}")
-        print("       (if it's a model error, set BASELINE_MODEL in .env to a current OpenRouter id)")
+        print("       (check WANDB_INFERENCE_PROJECT is 'entity/project', and BASELINE_MODEL is a valid W&B Inference id)")
         results[name] = False
 
 
@@ -119,12 +120,12 @@ def check_marimo():
 if __name__ == "__main__":
     check_env()
     check_typesafe()
-    check_openrouter()
+    check_wandb_inference()
     check_weave()
     check_marimo()
     print("\n=== summary ===")
     for k, v in results.items():
         print(f"  {OK if v else FAIL}: {k}")
     all_ok = all(results.values()) and len(results) == 4
-    print("\nall green" if all_ok else "\nsome checks failed — see above")
+    print("\nall green" if all_ok else "\nsome checks failed, see above")
     raise SystemExit(0 if all_ok else 1)

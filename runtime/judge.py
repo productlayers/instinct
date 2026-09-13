@@ -4,7 +4,7 @@ Wraps TypeSafe `system_one` (or the baseline arm) and adds timing, a short cache
 and the arm switch. Weave logging is added in step 5. See BUILD.md section 5.
 
 Scaling: each call is one `system_one` request over one `state`. Run many guards
-concurrently with `asyncio.gather` — the shared client below is safe to reuse.
+concurrently with `asyncio.gather`: the shared client below is safe to reuse.
 """
 import hashlib
 import json
@@ -110,12 +110,12 @@ async def choice(key: str, state: dict, instructions: str, criteria) -> Result:
 
 async def ask(key, state, questions) -> dict:
     """Multiple questions over one shared `state` (used by Turing Tag later)."""
-    raise NotImplementedError("stub — multi-question batching, not needed this slice")
+    raise NotImplementedError("stub, multi-question batching, not needed this slice")
 
 
 async def noul(key, state, instructions, criteria=None) -> Result:
-    raise NotImplementedError("stub — wire when a game needs it")
+    raise NotImplementedError("stub, wire when a game needs it")
 
 
 async def score(key, state, instructions, criteria) -> Result:
-    raise NotImplementedError("stub — wire when a game needs it")
+    raise NotImplementedError("stub, wire when a game needs it")
