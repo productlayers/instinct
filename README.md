@@ -9,8 +9,10 @@ See `BUILD.md` for the full plan and build order.
 
 ## Setup
 
+Needs Python 3.10+ (a `typesafe-sdk` requirement). On this machine use `python3.12`.
+
 ```
-python -m venv .venv && source .venv/bin/activate
+python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env      # then fill in your keys — never commit .env
 ```

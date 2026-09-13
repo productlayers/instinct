@@ -10,8 +10,9 @@ RUNTIME_ARM = os.environ.get("RUNTIME_ARM", "typesafe")
 # short cache TTL for identical (key, state) judgments, in seconds
 JUDGE_CACHE_TTL_S = float(os.environ.get("JUDGE_CACHE_TTL_S", "0.5"))
 
-# baseline (LLM-as-judge) model
-BASELINE_MODEL = os.environ.get("BASELINE_MODEL", "claude-haiku-4-5-20251001")
+# baseline (LLM-as-judge) arm, via OpenRouter (OpenAI-compatible)
+BASELINE_MODEL = os.environ.get("BASELINE_MODEL", "openai/gpt-4o-mini")
+OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 
 
 def require(name: str) -> str:

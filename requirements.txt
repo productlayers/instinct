@@ -1,5 +1,5 @@
 typesafe-sdk        # the judgments
-anthropic           # baseline arm (Claude Haiku)
+openai              # baseline arm (LLM-as-judge, via OpenRouter)
 weave               # tracing (pulls in wandb)
 marimo              # tuning surface (nice-to-have)
 pygame              # the game
