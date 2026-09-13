@@ -1,4 +1,4 @@
-# Instinct — Stealth slice build doc
+# Instinct: Stealth slice build doc
 
 The goal of this slice: one small stealth game where the guards decide what to do
 via TypeSafe typed judgments, running through a shared runtime module we can reuse
@@ -9,9 +9,10 @@ Everything here is Stealth-only. Turing Tag, Survival, Unity/Unreal, and any NPC
 dialogue are out of scope for this slice.
 
 **Local only.** The game never gets deployed. It runs on a laptop for play and for
-screen-recording the demo — no hosting, no player accounts, no web build. That drops
+screen-recording the demo, no hosting, no player accounts, no web build. That drops
 a whole class of work (auth, servers, a JS build) and one class of on-stage failure.
-The only network calls are to TypeSafe, OpenRouter (baseline), and W&B.
+The only network calls are to TypeSafe and W&B (Weave tracing, plus the Inference
+baseline).
 
 ---
 
@@ -37,7 +38,7 @@ Nice-to-have for this slice (first on the cut list):
 
 ## 2. Stack
 
-Python everywhere — it lines up with all three sponsors (Weave and marimo are
+Python everywhere, it lines up with all three sponsors (Weave and marimo are
 Python-first, TypeSafe has a Python SDK) and keeps the demo self-contained.
 Requires Python 3.10+ (`typesafe-sdk`); we're on 3.12. Verified installed:
 typesafe-sdk 0.5.7, anthropic 1.5.0, weave 0.53.9, marimo 0.24.2, pygame 2.6.1.
@@ -46,20 +47,21 @@ typesafe-sdk 0.5.7, anthropic 1.5.0, weave 0.53.9, marimo 0.24.2, pygame 2.6.1.
 - Runtime: plain Python module.
 - Judgments: TypeSafe Python SDK (confirm the package name and calls from
   https://docs.typesafe.ai/sdk/python.md).
-- A/B baseline: a small fast LLM as the "LLM-as-judge" arm, via **OpenRouter**
-  (OpenAI-compatible, so we use the `openai` SDK with OpenRouter's base URL).
-  `BASELINE_MODEL` picks the model. Using a *fast* model is the fair comparison: even
-  a fast LLM is slower and pricier than a typed judgment.
+- A/B baseline: a small fast LLM as the "LLM-as-judge" arm, via **W&B Inference**
+  (OpenAI-compatible, so we use the `openai` SDK with the Inference base URL and the
+  W&B API key). `BASELINE_MODEL` picks the model (e.g. `meta-llama/Llama-3.1-8B-Instruct`).
+  Using a *fast* model is the fair comparison: even a fast LLM is slower and pricier
+  than a typed judgment.
 - Tracing: W&B Weave.
 - Tuning surface: marimo.
 
-If we'd rather demo in a browser later, the game is the only piece that changes —
+If we'd rather demo in a browser later, the game is the only piece that changes,
 the runtime, evals, and Weave stay put. Not for this slice.
 
 `requirements.txt`:
 ```
 typesafe-sdk        # the judgments
-openai              # baseline arm (LLM-as-judge, via OpenRouter)
+openai              # baseline arm (LLM-as-judge, via W&B Inference)
 weave               # tracing (pulls in wandb)
 marimo              # tuning surface (nice-to-have)
 pygame              # the game
@@ -72,11 +74,11 @@ python-dotenv       # load .env locally
 
 ```
 instinct/
-  runtime/                 # shared, game-agnostic — the reusable core
+  runtime/                 # shared, game-agnostic, the reusable core
     __init__.py
     judge.py               # choice/noul/score → routes to TypeSafe or baseline
-    baseline.py            # LLM-as-judge arm (OpenRouter)
-    memory.py              # recall() / distill() — the learning loop
+    baseline.py            # LLM-as-judge arm (W&B Inference)
+    memory.py              # recall() / distill(), the learning loop
     trace.py               # Weave logging helpers
     config.py              # arm switch, TTLs; reads keys from env only
   games/
@@ -129,20 +131,20 @@ __marimo__/
 *.local
 ```
 
-`.env.example` (committed, placeholders — no real values):
+`.env.example` (committed, placeholders, no real values):
 ```
 TYPESAFE_API_KEY=your_typesafe_key_here
-WANDB_API_KEY=your_wandb_key_here
-OPENROUTER_API_KEY=your_openrouter_key_here   # baseline arm (LLM-as-judge)
-BASELINE_MODEL=openai/gpt-4o-mini             # any OpenRouter model id
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+WANDB_API_KEY=your_wandb_key_here                 # also auths the W&B Inference baseline
+BASELINE_MODEL=meta-llama/Llama-3.1-8B-Instruct   # a W&B Inference model id
+WANDB_INFERENCE_BASE_URL=https://api.inference.wandb.ai/v1
+WANDB_INFERENCE_PROJECT=your-entity/your-project  # for W&B Inference usage tracking
 ```
 
 Rules for the code:
 - `runtime/config.py` reads keys via `os.environ`; if a needed key is missing it
   fails fast with a clear message naming the missing variable. No hardcoded keys,
   ever, not even placeholders, in any `.py`.
-- Weave logs game state and decisions only — never the keys.
+- Weave logs game state and decisions only, never the keys.
 - First thing on setup: `cp .env.example .env`, fill it in locally, confirm
   `git status` does **not** list `.env`.
 
@@ -193,13 +195,13 @@ timing, caching, Weave logging, and the baseline switch:
 # returns {pick, dist, confidence, latency_ms, cost, arm}
 await judge.choice(key, state, instructions, criteria)   # one Choice over `state`
 await judge.ask(key, state, questions={...})             # multi-question over one state
-# noul()/score() are thin wrappers too — build as stubs, wire only choice this slice
+# noul()/score() are thin wrappers too: build as stubs, wire only choice this slice
 ```
 
 Wrapper responsibilities: **time** every call (wall-clock latency); **cache** by
 `(key, hash(state))` on a short TTL; **log** to Weave; route to TypeSafe or the
 baseline by `RUNTIME_ARM`; hold the **memory** store. Cost: read from the response if
-the SDK exposes usage, otherwise estimate from pricing — confirm day one.
+the SDK exposes usage, otherwise estimate from pricing, confirm day one.
 
 ---
 
@@ -207,13 +209,13 @@ the SDK exposes usage, otherwise estimate from pricing — confirm day one.
 
 **World.** A small grid level: walls, a few rooms, cover tiles, one exit, one
 keycard. Guards patrol fixed routes. The player moves and can **throw** an object to
-make a noise at a chosen spot. That one verb ("throw") is the whole trick — keep the
+make a noise at a chosen spot. That one verb ("throw") is the whole trick, keep the
 verb set minimal.
 
 **Engine owns (plain code, no judgments):** movement, walls, vision cones,
 line-of-sight, A* pathing, the noise event when an object lands, win/lose.
 
-**The one judgment — `stealth.guard_action` (Choice):**
+**The one judgment, `stealth.guard_action` (Choice):**
 ```python
 # via the wrapper, which calls TypeSafe system_one under the hood (async):
 res = await judge.choice(
@@ -248,12 +250,12 @@ guard_state = {
 
 **Code-side rules around the judgment (in `judgments.py`):**
 - *When to ask.* Only call when `just_noticed` is non-empty or a sighting changed.
-  Otherwise run the cheap patrol behavior — no call. Throttle to at most one call per
+  Otherwise run the cheap patrol behavior, no call. Throttle to at most one call per
   guard every ~0.5s.
 - *Async, never blocks a frame.* Issue the request; the guard keeps doing its current
   behavior until the answer returns a few ms later, then switches. This matters: it
   means the *reaction delay* is what differs between arms, not the frame rate. With
-  the LLM arm the guard reacts ~1s late — which is exactly why the trick still works
+  the LLM arm the guard reacts ~1s late, which is exactly why the trick still works
   against it. That's the A/B, shown on screen.
 - *Threshold / hysteresis.* `pick = argmax(dist)`; if the top probability < 0.4, keep
   the current behavior (no twitchy flip-flopping).
@@ -266,14 +268,14 @@ guard_state = {
   e.g. `"fake distraction via thrown object"`.
 - Next attempt, `memory.recall` injects that into `guard_state.this_player`, so the
   same clang yields a lower `investigate_noise` probability. The distribution shift is
-  the demo — no model retraining, just richer state.
+  the demo, no model retraining, just richer state.
 
 **The demo moment (build toward this):**
-1. Attempt 1 — throw a rock to the NE. Guard investigates, you slip past.
-2. A few attempts later — same rock. Guard now weighs "this player fakes
+1. Attempt 1, throw a rock to the NE. Guard investigates, you slip past.
+2. A few attempts later, same rock. Guard now weighs "this player fakes
    distractions," holds position / calls it in. The trick fails; the `dist` on screen
    shows `investigate_noise` dropped.
-3. Flip `RUNTIME_ARM` to the LLM baseline — the guard reacts ~1s late and the trick
+3. Flip `RUNTIME_ARM` to the LLM baseline, the guard reacts ~1s late and the trick
    works again, at higher cost per call. Point made.
 
 ---
@@ -286,28 +288,28 @@ Log once per attempt:
 - did the player reach the exit, did the active trick work, number of judgments, attempt index.
 
 Charts to build from this:
-- **Guard "fooled rate" across attempts** — should fall as guards learn (the headline).
-- **Latency p50/p95 by arm** — TypeSafe vs LLM.
+- **Guard "fooled rate" across attempts**: should fall as guards learn (the headline).
+- **Latency p50/p95 by arm**: TypeSafe vs LLM.
 - **Cost per attempt by arm.**
-- **Same-scenario A/B** — one seeded attempt through both arms, side by side.
+- **Same-scenario A/B**: one seeded attempt through both arms, side by side.
 
 Build these core charts ourselves so the main demo never depends on a preview tool.
 Structure the runs so they're easy to analyze later: one W&B run per session/attempt,
 consistent metric names, and the arm tagged on every judgment.
 
-### ARIA — best-use-of-ARIA prize track (additive, not on the critical path)
+### ARIA: best-use-of-ARIA prize track (additive, not on the critical path)
 
 CoreWeave ARIA is an autonomous research agent inside W&B (public preview, built on
 Weave) that reads runs and traces at scale, forms hypotheses, builds visualizations
 and reports, and recommends the next iteration. Our runtime produces exactly its kind
-of input — thousands of judgments across two arms and many attempts — so this is a
+of input, thousands of judgments across two arms and many attempts, so this is a
 natural fit, and since we're already logging to Weave, the extra cost to qualify is low.
 
 Uses, strongest first:
 - **The meta-loop (lead with this).** ARIA is an agent that researches agents. Point it
   at our agent loop and have it surface which judgments are weak / slow / ambiguous and
-  **recommend tunings**. That's our learning loop automated — an agent improving our
-  agent — which is squarely on the agent-loops theme.
+  **recommend tunings**. That's our learning loop automated, an agent improving our
+  agent, which is squarely on the agent-loops theme.
 - **The A/B, written for us.** ARIA generates the TypeSafe-vs-LLM comparison (latency,
   cost, accuracy) as panels and a report instead of us hand-building it.
 - **Failure-mode discovery.** It scans the judgments and points at where the guard
@@ -319,7 +321,7 @@ Rules of engagement:
 - Keep the core A/B and charts hand-built (above). ARIA is the *showcase* layer
   ("and here's an agent that analyzed all of this on its own and recommended these
   changes"), never the thing the main demo relies on.
-- Prerequisite is good Weave logging, which we're doing anyway — so treat ARIA as a
+- Prerequisite is good Weave logging, which we're doing anyway, so treat ARIA as a
   payoff we get once the traces are rich, not separate upfront work.
 
 ---
@@ -350,10 +352,10 @@ it's smart, it's cheaper/faster than the LLM, it improves.
 
 ## 9. marimo tuning (nice-to-have)
 
-`tuning/stealth_tuning.py` — a reactive notebook where you edit the judgment's
+`tuning/stealth_tuning.py`: a reactive notebook where you edit the judgment's
 criteria, the policy string, or the thresholds, and watch a canned scenario's
 distribution (or a live guard) change immediately. This is the "authoring surface"
-part of the story and it's game-agnostic — it operates on judgments, not guards.
+part of the story and it's game-agnostic, it operates on judgments, not guards.
 
 ---
 
@@ -366,14 +368,14 @@ Vertical slice, in order. Each step is runnable before the next.
 2. **Runtime `choice` → TypeSafe.** Real call, real typed answer, returned with
    latency/cost. `noul`/`score` as stubs.
 3. **Stealth playable, guards on plain rules.** Level, player, throw, guard patrol +
-   vision + chase-on-sight. No judgments yet — just a working game.
+   vision + chase-on-sight. No judgments yet, just a working game.
 4. **Swap guard decisions to `judge.choice`.** Build `guard_state`, wire the async
    call, the when-to-ask gate, threshold, and overrides.
 5. **Weave logging.** Every judgment + per-attempt outcome. See the first charts.
 6. **Memory / learning.** `recall` before the judgment, `distill` at attempt end.
    Get the trick-stops-working behavior on screen.
-7. **Baseline arm + arm switch.** A fast OpenRouter model as LLM-as-judge behind the
-   same interface; `RUNTIME_ARM` flag.
+7. **Baseline arm + arm switch.** A fast W&B Inference model as LLM-as-judge behind
+   the same interface; `RUNTIME_ARM` flag.
 8. **Evals harness.** Golden set, accuracy/latency/cost/A-B, learning-curve replay.
 9. **(If time) marimo tuning notebook.**
 
@@ -384,7 +386,7 @@ Rough split for two people: one on 3 (game) while the other does 1–2 then 5–
 
 ## 11. Risks / cut list
 
-- **TypeSafe SDK** — package/auth/call shape are pinned (section 5). Still open: whether
+- **TypeSafe SDK**: package/auth/call shape are pinned (section 5). Still open: whether
   the response exposes per-call cost/usage, and the rate limits. Check both day one.
 - **Cut order if behind:** marimo notebook → learning-curve replay mode (keep static
   accuracy + A/B) → memory/learning (keep the static "smart decision" + A/B story).

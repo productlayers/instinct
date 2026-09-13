@@ -2,7 +2,7 @@
 
 `recall()` injects learned fields into a judgment's state before it runs.
 `distill()` summarizes an attempt into those fields afterwards (offline, never in the
-frame path). A "lesson" is just named fields we merge into future state — no model
+frame path). A "lesson" is just named fields we merge into future state, no model
 retraining. See BUILD.md section 6.
 """
 

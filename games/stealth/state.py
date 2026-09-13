@@ -9,7 +9,7 @@ from runtime import memory
 def guard_state(guard, world, player_id: str) -> dict:
     """Assemble what one guard senses right now, plus learned player fields.
 
-    TODO (step 4): fill from the real world — alertness, last sighting, this tick's
+    TODO (step 4): fill from the real world, alertness, last sighting, this tick's
     anomalies (noises, a door left open), and memory.recall(player_id).
     """
     return {

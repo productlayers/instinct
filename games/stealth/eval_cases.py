@@ -2,7 +2,7 @@
 
 Drives three proofs off one set: decision accuracy, the A/B vs the LLM baseline, and
 the learning curve (replayed with `this_player.tricks` accumulating). See BUILD.md
-section 8. Seed set below — grow to ~12-15.
+section 8. Seed set below, grow to ~12-15.
 """
 
 CASES = [

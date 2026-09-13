@@ -1,5 +1,5 @@
 typesafe-sdk        # the judgments
-openai              # baseline arm (LLM-as-judge, via OpenRouter)
+openai              # baseline arm (LLM-as-judge, via W&B Inference)
 weave               # tracing (pulls in wandb)
 marimo              # tuning surface (nice-to-have)
 pygame              # the game
