@@ -3,6 +3,14 @@
 Never hardcode secrets. See BUILD.md section 4 (secrets and repo hygiene).
 """
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load the repo-root .env so every entrypoint gets keys regardless of the working
+# directory. (python-dotenv's find_dotenv() searches from the caller's file, which is
+# fragile across scripts; this is explicit and robust.)
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 # which arm answers judgments: "typesafe" (default) or "baseline"
 RUNTIME_ARM = os.environ.get("RUNTIME_ARM", "typesafe")
