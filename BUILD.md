@@ -39,14 +39,17 @@ Nice-to-have for this slice (first on the cut list):
 
 Python everywhere — it lines up with all three sponsors (Weave and marimo are
 Python-first, TypeSafe has a Python SDK) and keeps the demo self-contained.
+Requires Python 3.10+ (`typesafe-sdk`); we're on 3.12. Verified installed:
+typesafe-sdk 0.5.7, anthropic 1.5.0, weave 0.53.9, marimo 0.24.2, pygame 2.6.1.
 
 - Game: `pygame` (real-time top-down, easy to run and screen-record).
 - Runtime: plain Python module.
 - Judgments: TypeSafe Python SDK (confirm the package name and calls from
   https://docs.typesafe.ai/sdk/python.md).
-- A/B baseline: a small fast LLM as the "LLM-as-judge" arm — Claude Haiku
-  (`claude-haiku-4-5-20251001`) via the Anthropic SDK. Using a *fast* model is the
-  fair comparison: even a fast LLM is slower and pricier than a typed judgment.
+- A/B baseline: a small fast LLM as the "LLM-as-judge" arm, via **OpenRouter**
+  (OpenAI-compatible, so we use the `openai` SDK with OpenRouter's base URL).
+  `BASELINE_MODEL` picks the model. Using a *fast* model is the fair comparison: even
+  a fast LLM is slower and pricier than a typed judgment.
 - Tracing: W&B Weave.
 - Tuning surface: marimo.
 
@@ -56,7 +59,7 @@ the runtime, evals, and Weave stay put. Not for this slice.
 `requirements.txt`:
 ```
 typesafe-sdk        # the judgments
-anthropic           # baseline arm (Claude Haiku)
+openai              # baseline arm (LLM-as-judge, via OpenRouter)
 weave               # tracing (pulls in wandb)
 marimo              # tuning surface (nice-to-have)
 pygame              # the game
@@ -130,7 +133,9 @@ __marimo__/
 ```
 TYPESAFE_API_KEY=your_typesafe_key_here
 WANDB_API_KEY=your_wandb_key_here
-ANTHROPIC_API_KEY=your_anthropic_key_here   # baseline arm only
+OPENROUTER_API_KEY=your_openrouter_key_here   # baseline arm (LLM-as-judge)
+BASELINE_MODEL=openai/gpt-4o-mini             # any OpenRouter model id
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 ```
 
 Rules for the code:
