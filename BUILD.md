@@ -1,18 +1,17 @@
 # Instinct: Stealth slice build doc
 
 The goal of this slice: one small stealth game where the guards decide what to do
-via TypeSafe typed judgments, running through a shared runtime module we can reuse
-for the next game. When this slice is done we can demo the whole pitch on one game,
-and Turing Tag becomes "do it again through the same module."
+via typed judgments, running through a shared runtime module we can reuse for the
+next game. When this slice is done the whole idea is proven on one game, and Turing
+Tag becomes "do it again through the same module."
 
 Everything here is Stealth-only. Turing Tag, Survival, Unity/Unreal, and any NPC
 dialogue are out of scope for this slice.
 
-**Local only.** The game never gets deployed. It runs on a laptop for play and for
-screen-recording the demo, no hosting, no player accounts, no web build. That drops
-a whole class of work (auth, servers, a JS build) and one class of on-stage failure.
-The only network calls are to TypeSafe and W&B (Weave tracing, plus the Inference
-baseline).
+**Local only.** The game never gets deployed. It runs on a laptop, no hosting, no
+player accounts, no web build. That drops a whole class of work (auth, servers, a
+JS build). The only network calls are to TypeSafe and W&B (Weave tracing, plus the
+Inference baseline).
 
 ---
 
@@ -38,8 +37,8 @@ Nice-to-have for this slice (first on the cut list):
 
 ## 2. Stack
 
-Python everywhere, it lines up with all three sponsors (Weave and marimo are
-Python-first, TypeSafe has a Python SDK) and keeps the demo self-contained.
+Python everywhere: Weave and marimo are Python-first and TypeSafe has a Python
+SDK, so one language keeps the whole thing self-contained.
 Requires Python 3.10+ (`typesafe-sdk`); we're on 3.12. Verified installed:
 typesafe-sdk 0.5.7, anthropic 1.5.0, weave 0.53.9, marimo 0.24.2, pygame 2.6.1.
 
@@ -201,7 +200,7 @@ await judge.ask(key, state, questions={...})             # multi-question over o
 Wrapper responsibilities: **time** every call (wall-clock latency); **cache** by
 `(key, hash(state))` on a short TTL; **log** to Weave; route to TypeSafe or the
 baseline by `RUNTIME_ARM`; hold the **memory** store. Cost: read from the response if
-the SDK exposes usage, otherwise estimate from pricing, confirm day one.
+the SDK exposes usage, otherwise estimate from pricing, confirm early.
 
 ---
 
@@ -297,13 +296,13 @@ Build these core charts ourselves so the main demo never depends on a preview to
 Structure the runs so they're easy to analyze later: one W&B run per session/attempt,
 consistent metric names, and the arm tagged on every judgment.
 
-### ARIA: best-use-of-ARIA prize track (additive, not on the critical path)
+### ARIA: automated trace analysis (optional, not on the critical path)
 
 CoreWeave ARIA is an autonomous research agent inside W&B (public preview, built on
 Weave) that reads runs and traces at scale, forms hypotheses, builds visualizations
 and reports, and recommends the next iteration. Our runtime produces exactly its kind
-of input, thousands of judgments across two arms and many attempts, so this is a
-natural fit, and since we're already logging to Weave, the extra cost to qualify is low.
+of input, thousands of judgments across two arms and many attempts, so it's a natural
+fit, and since we're already logging to Weave, the extra cost to use it is low.
 
 Uses, strongest first:
 - **The meta-loop (lead with this).** ARIA is an agent that researches agents. Point it
@@ -317,10 +316,9 @@ Uses, strongest first:
 - **Learning-curve tracking.** It tracks the fooled-rate trend across attempts.
 
 Rules of engagement:
-- Confirm on day one that hackathon participants have ARIA access.
 - Keep the core A/B and charts hand-built (above). ARIA is the *showcase* layer
   ("and here's an agent that analyzed all of this on its own and recommended these
-  changes"), never the thing the main demo relies on.
+  changes"), never the thing the demo relies on.
 - Prerequisite is good Weave logging, which we're doing anyway, so treat ARIA as a
   payoff we get once the traces are rich, not separate upfront work.
 
@@ -379,15 +377,16 @@ Vertical slice, in order. Each step is runnable before the next.
 8. **Evals harness.** Golden set, accuracy/latency/cost/A-B, learning-curve replay.
 9. **(If time) marimo tuning notebook.**
 
-Rough split for two people: one on 3 (game) while the other does 1–2 then 5–7
-(runtime, Weave, baseline); converge at 4; share 8.
+Build it in that order, each step runnable before the next: the game (3) stands
+on plain rules first, then the runtime, Weave, and baseline (1–2, 5–7) wire in at
+step 4, and the evals (8) sit on top.
 
 ---
 
 ## 11. Risks / cut list
 
 - **TypeSafe SDK**: package/auth/call shape are pinned (section 5). Still open: whether
-  the response exposes per-call cost/usage, and the rate limits. Check both day one.
+  the response exposes per-call cost/usage, and the rate limits. Check both early.
 - **Cut order if behind:** marimo notebook → learning-curve replay mode (keep static
   accuracy + A/B) → memory/learning (keep the static "smart decision" + A/B story).
 - **Keep the verb set tiny.** One meaningful player verb (throw). Resist adding
