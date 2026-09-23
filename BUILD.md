@@ -17,21 +17,24 @@ Inference baseline).
 
 ## 1. What "done" means (definition of done)
 
-- [ ] A playable top-down stealth level: sneak past guards to reach the exit.
-- [ ] Guards decide their behavior from a TypeSafe **Choice** judgment, not a script.
-- [ ] The judgment runs off the frame loop (async) so it never stalls rendering.
-- [ ] "The trick that stops working": a distraction that fools a guard on attempt 1,
+- [x] A playable top-down stealth level: sneak past guards to reach the exit.
+- [x] Guards decide their behavior from a TypeSafe **Choice** judgment, not a script.
+- [x] The judgment runs off the frame loop (async) so it never stalls rendering.
+- [x] "The trick that stops working": a distraction that fools a guard on attempt 1,
       and stops fooling it after the guard has learned the player across attempts.
-- [ ] An arm switch: the same guard decision can be answered by TypeSafe **or** by a
+- [x] An arm switch: the same guard decision can be answered by TypeSafe **or** by a
       plain LLM-as-judge, chosen by one config flag.
-- [ ] Every judgment is logged to W&B Weave: inputs, pick, full distribution,
-      latency, cost, and which arm answered.
+- [x] Every judgment is logged to W&B Weave: inputs, pick, full distribution,
+      latency, and which arm answered. (Token counts are logged; dollar cost isn't
+      derived yet.)
 - [ ] An evals script that runs the golden cases through both arms and prints
-      accuracy, latency (p50/p95), cost, and the A/B deltas.
-- [ ] No secrets in the repo. Keys come from the environment only.
+      accuracy, latency (p50/p95), cost, and the A/B deltas. (Golden cases exist in
+      `games/stealth/eval_cases.py`; the harness isn't built.)
+- [x] No secrets in the repo. Keys come from the environment only.
 
 Nice-to-have for this slice (first on the cut list):
-- [ ] A marimo notebook to edit the judgment and watch a guard's decision change live.
+- [x] A marimo notebook to watch a guard's decision change live as you edit its
+      inputs (what it noticed, and whether it has learned the player's trick).
 
 ---
 
