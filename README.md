@@ -5,6 +5,10 @@
 NPCs that learn how each player plays, fast and cheap enough to run inside a game
 loop. Instinct is a Python library built on TypeSafe's Jev.
 
+It works for any NPC decision in a Python game, not just stealth: an enemy picking a
+tactic, a shopkeeper setting a price, a companion deciding whether to follow you. It
+works with pygame, Arcade, Ren'Py, or plain Python.
+
 ![Two guards side by side. The one that learns stops falling for the distraction; the one with no memory falls for it every round.](docs/learning-loop.gif)
 
 *Both guards decide through the same `Brain`. The left one calls `brain.learn()` after it
@@ -20,6 +24,22 @@ Instinct sends Jev the NPC's situation, the actions it's allowed to take, and wh
 learned about this player. Jev returns a probability for each action, usually in 100 to
 200 ms. When the player gets away with something, the game records a lesson, and every NPC
 facing that player uses it from the next decision on.
+
+## Install
+
+```
+pip install git+https://github.com/productlayers/instinct
+export TYPESAFE_API_KEY=...     # Jev is in early access: typesafe.ai
+```
+
+Needs Python 3.10+.
+
+## What you provide
+
+- The actions the NPC can take, each with a plain-English description
+- A sentence of instructions
+- The situation, as any JSON-serializable dict
+- An id for the NPC and one for the player
 
 ## Add it to your game
 
@@ -52,12 +72,34 @@ brain.learn("p1", "throws objects to lure guards off their post")
 For a turn-based game or a script, `brain.decide(...)` blocks and returns the decision.
 For an async game, use `await brain.adecide(...)`.
 
+The same thing for a shopkeeper:
+
+```python
+shop = Brain(
+    actions={
+        "normal_price": "sell at the usual price",
+        "discount": "offer 20% off",
+        "charge_more": "raise the price",
+    },
+    instructions="Decide how this shopkeeper prices the item for this customer, "
+                 "using what's known about them.",
+    fallback="normal_price",
+)
+situation = {"item": "healing potion", "stock": 2, "customer_gold": 340}
+
+shop.decide("merchant", player="p1", situation=situation)   # normal_price (about 1.0)
+shop.learn("p1", "walks away when haggling fails, then comes back and pays full price")
+shop.decide("merchant", player="p1", situation=situation)   # charge_more (about 0.7)
+```
+
+The comments show what Jev returned in three live runs of each call.
+
 ## What makes it safe to ship
 
 | Guarantee | How | Tested in |
 |---|---|---|
 | Never stalls the game loop | `request()` returns right away. The call runs on a background thread and `poll()` picks up the result | `test_request_does_not_block_the_game_loop` |
-| Keeps working when Jev is slow or down | Hard timeout (`timeout_s`, default 1s). On a timeout or error the NPC gets the `fallback` action, and `d.reason` says why | `test_slow_jev_falls_back_instead_of_stalling`, `test_jev_error_falls_back` |
+| Keeps working when Jev is slow or down | Hard timeout (`timeout_s`, default 1s). On a timeout or error the NPC gets the `fallback` action. `d.reason` says why, and for errors `d.error` has the message, which is also logged once | `test_slow_jev_falls_back_instead_of_stalling`, `test_jev_error_falls_back`, `test_errors_say_what_went_wrong_and_log_once` |
 | No flip-flopping on unsure calls | If the chosen action's probability is under `confidence_floor` (default 0.4), the NPC keeps its last action | `test_low_confidence_keeps_the_last_action` |
 | Only actions you allowed | An action you didn't offer counts as an error and falls back | `test_unknown_action_from_decider_falls_back` |
 | Learning survives restarts | Lessons are stored in SQLite | `test_learning_survives_a_restart` |
@@ -92,9 +134,7 @@ python -m games.stealth.learn --timeout 0.001          # Jev "too slow": every d
 python -m games.stealth.game                           # the playable stealth level
 ```
 
-Needs Python 3.10+. Jev is in early access, so keys come through the waitlist at
-[typesafe.ai](https://typesafe.ai). The W&B key is only used for Weave tracing and the
-LLM baseline.
+The W&B key in `.env` is only used for Weave tracing and the LLM baseline.
 
 ## Limits and what's next
 

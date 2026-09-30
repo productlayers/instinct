@@ -85,6 +85,15 @@ def test_jev_error_falls_back():
     assert d.action == "hold" and d.reason == "error"
 
 
+def test_errors_say_what_went_wrong_and_log_once(caplog):
+    with caplog.at_level("WARNING", logger="instinct"):
+        with make(FakeJev(raises=ValueError("bad API key"))) as b:
+            d = b.decide("guard_1", player="p1", situation=SITUATION)
+            b.decide("guard_1", player="p1", situation=SITUATION)
+    assert d.error == "ValueError: bad API key"
+    assert sum("bad API key" in r.message for r in caplog.records) == 1
+
+
 def test_unknown_action_from_decider_falls_back():
     bad = Verdict("dance", {"dance": 1.0}, 1.0)
     with make(FakeJev(verdict=bad)) as b:
