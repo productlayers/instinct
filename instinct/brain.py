@@ -13,6 +13,7 @@ A decision falls back instead of failing:
 """
 import asyncio
 import json
+import logging
 import os
 import statistics
 import threading
@@ -23,6 +24,8 @@ from dataclasses import dataclass, field
 
 from .jev import JevDecider, Verdict
 from .memory import LessonStore
+
+log = logging.getLogger("instinct")
 
 
 @dataclass(frozen=True)
@@ -35,6 +38,7 @@ class Decision:
     confidence: float | None = None
     latency_ms: float = 0.0
     lessons_used: int = 0
+    error: str | None = None        # what went wrong, when reason == "error"
 
     @property
     def fell_back(self) -> bool:
@@ -83,6 +87,7 @@ class Brain:
         self._last: dict[str, str] = {}
         self._latencies: deque[float] = deque(maxlen=1000)
         self._counts: Counter = Counter()
+        self._logged_errors: set[str] = set()
 
         self._decide_op = self._decide
         if trace:
@@ -189,17 +194,20 @@ class Brain:
                 self._decider(state, self.instructions, self.actions), self.timeout_s)
         except asyncio.TimeoutError:
             return self._record(npc, self.fallback, "fallback", "timeout", t0, len(lessons))
-        except Exception:
-            return self._record(npc, self.fallback, "fallback", "error", t0, len(lessons))
+        except Exception as e:
+            return self._record(npc, self.fallback, "fallback", "error", t0, len(lessons),
+                                error=f"{type(e).__name__}: {e}")
 
         if v.action not in self.actions:
-            return self._record(npc, self.fallback, "fallback", "error", t0, len(lessons))
+            return self._record(npc, self.fallback, "fallback", "error", t0, len(lessons),
+                                error=f"decider returned {v.action!r}, which isn't one of the actions")
         if v.probabilities.get(v.action, 0.0) < self.confidence_floor:
             keep = self._last.get(npc, self.fallback)
             return self._record(npc, keep, "fallback", "low_confidence", t0, len(lessons), v)
         return self._record(npc, v.action, "jev", None, t0, len(lessons), v)
 
-    def _record(self, npc, action, source, reason, t0, n_lessons, v: Verdict | None = None) -> Decision:
+    def _record(self, npc, action, source, reason, t0, n_lessons, v: Verdict | None = None,
+                error: str | None = None) -> Decision:
         ms = (time.perf_counter() - t0) * 1000.0
         with self._lock:
             self._latencies.append(ms)
@@ -207,9 +215,14 @@ class Brain:
             if reason:
                 self._counts[reason] += 1
             self._last[npc] = action
+            first_time = error is not None and error not in self._logged_errors
+            if first_time:
+                self._logged_errors.add(error)
+        if first_time:  # once per distinct error, so a bad key doesn't flood the log every frame
+            log.warning("decision fell back to %r: %s", action, error)
         return Decision(
             npc=npc, action=action, source=source, reason=reason,
             probabilities=dict(v.probabilities) if v else {},
             confidence=v.confidence if v else None,
-            latency_ms=ms, lessons_used=n_lessons,
+            latency_ms=ms, lessons_used=n_lessons, error=error,
         )
