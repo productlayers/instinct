@@ -1,20 +1,20 @@
 """The learning demo: one NPC learns the player's trick in one shot, the other never does.
 
 The player runs the SAME trick every round: throw an object to make a noise to the side,
-then slip through the door while the guard goes to check it. Both guards use the same fast
-typed judgment. The only difference is the self-improvement loop:
+then slip through the door while the guard goes to check it. Both guards decide through
+the same `instinct.Brain`. The only difference is that the left side calls `brain.learn()`
+after it gets fooled, and the right side never does:
 
-  Left  (Instinct)     -- remembers what fooled it. Falls for the trick once, learns it,
-                          and from then on holds the door and catches the intruder.
-  Right (Static NPC)   -- no memory. Falls for the exact same trick every single round,
-                          the way NPCs work today.
+  Left  (learns the player)  falls for the trick once, then holds the door.
+  Right (no memory)          falls for the same trick every round.
 
-Watch the "investigate" chance collapse on the left after round 1, the lesson get written,
-and the "times fooled" tally split apart. Nothing scripted about the decisions: the guard
-re-judges every round; memory is the whole difference.
+The game has no AI code of its own. It calls brain.request() when the distraction lands,
+brain.poll() each frame until the decision arrives, and brain.learn() after an escape.
 
 Run: `python -m games.stealth.learn`   Headless check: add `--selftest`.
-SPACE replays from scratch. Esc quits.
+  --memory FILE   keep what the guard learned in a SQLite file, so it survives a restart
+  --timeout S     Jev timeout in seconds; set it tiny to watch the fallback kick in
+SPACE replays from scratch (and clears the learned lesson). Esc quits.
 """
 from __future__ import annotations
 
@@ -26,8 +26,9 @@ from dataclasses import dataclass, field
 
 import pygame
 
-from runtime import judge, trace, memory
-from games.stealth.judgments import GUARD_ACTIONS, GUARD_INSTRUCTIONS
+from runtime import config, trace  # config loads the repo .env (TYPESAFE_API_KEY)
+from instinct import Brain
+from games.stealth.judgments import GUARD_ACTIONS
 
 # --- layout ---------------------------------------------------------------
 ARENA_W, ARENA_H = 470, 300
@@ -61,14 +62,21 @@ C_GOOD, C_BAD = (70, 210, 140), (232, 96, 84)
 C_BAR_BG = (30, 35, 44)
 
 
-def dstate(player_id):
-    return {
-        "guard": {"alertness": "calm", "last_saw_player_secs": None},
-        "just_noticed": ["heard a clang to the side", "a door I closed earlier is open"],
-        "sightings": {"player_in_view": False, "last_seen_desc": None},
-        "this_player": memory.recall(player_id),
-        "policy": "call backup only after a direct sighting",
-    }
+INSTRUCTIONS = (
+    "Decide what this guard does right now. Weigh everything in the state, including "
+    "this_player's lessons: if what the guard just noticed matches a tactic this player "
+    "is known to use to bait guards away, do not fall for it."
+)
+FALLBACK = "return_to_post"
+
+# What the guard senses when the distraction lands. Brain adds what it has learned
+# about the player (this_player.lessons) before asking Jev.
+SITUATION = {
+    "guard": {"alertness": "calm", "last_saw_player_secs": None},
+    "just_noticed": ["heard a clang to the side", "a door I closed earlier is open"],
+    "sightings": {"player_in_view": False, "last_seen_desc": None},
+    "policy": "call backup only after a direct sighting",
+}
 
 
 @dataclass
@@ -91,6 +99,7 @@ class Side:
     fooled_count: int = 0
     lessons: list = field(default_factory=list)
     noise_ttl: int = 0
+    note: str = ""          # how the last decision was made, shown in the panel
 
 
 def reset_round(s: Side):
@@ -99,9 +108,10 @@ def reset_round(s: Side):
     s.requested = s.decided = False
     s.invest, s.pick, s.fooled = 0.0, None, None
     s.guard_target, s.outcome, s.noise_ttl = None, None, 0
+    s.note = ""
 
 
-def update_side(s: Side, service):
+def update_side(s: Side, brain: Brain):
     if s.outcome is not None:
         if s.noise_ttl > 0:
             s.noise_ttl -= 1
@@ -111,20 +121,22 @@ def update_side(s: Side, service):
 
     if not s.requested and s.px >= THROW_X:
         s.noise_ttl = NOISE_TTL
-        service.request(s.pid, dstate(s.pid), GUARD_INSTRUCTIONS, GUARD_ACTIONS, arm="typesafe")
+        brain.request(s.pid, player=s.pid, situation=SITUATION)
         s.requested = True
 
     if s.noise_ttl > 0:
         s.noise_ttl -= 1
 
     if not s.decided:
-        res, _ = service.take(s.pid)
-        if res is not None:
+        d = brain.poll(s.pid)
+        if d is not None:
             s.decided = True
-            s.pick = res.pick
-            s.invest = float((res.dist or {}).get("investigate_noise", 0.0))
-            s.fooled = res.pick == "investigate_noise"
+            s.pick = d.action
+            s.invest = float(d.probabilities.get("investigate_noise", 0.0))
+            s.fooled = d.action == "investigate_noise"
             s.guard_target = DISTRACT if s.fooled else DOORPOS
+            s.note = (f"decided by Jev in {d.latency_ms:.0f} ms" if not d.fell_back
+                      else f"fallback ({d.reason.replace('_', ' ')}): {d.action}")
 
     if s.guard_target is not None:
         tx, ty = s.guard_target
@@ -149,7 +161,7 @@ def update_side(s: Side, service):
             # investigate a side-noise, and the intruder used that opening.
             obs = ("last time, this guard left its post to investigate a noise off to the "
                    "side, and the intruder used that opening to slip through the door and escape")
-            memory.learn_trick(s.pid, obs)
+            brain.learn(s.pid, obs)
             s.lessons.append(obs)
 
 
@@ -208,7 +220,10 @@ def draw_panel(screen, fonts, s: Side, ox, round_no):
             screen.blit(fonts["xs"].render("• don't chase a side-noise from this player", True, C_INSTINCT),
                         (ox + 16, ly + 16 + i * 15))
     else:
-        screen.blit(fonts["xs"].render("(none — no memory of past rounds)", True, C_MUTE), (ox + 16, ly + 16))
+        screen.blit(fonts["xs"].render("(none, no memory of past rounds)", True, C_MUTE), (ox + 16, ly + 16))
+    if s.note:
+        col = C_BAD if s.note.startswith("fallback") else C_MUTE
+        screen.blit(fonts["xs"].render(s.note, True, col), (ox + 16, ly + 50))
 
 
 def build_fonts():
@@ -221,7 +236,7 @@ def build_fonts():
     }
 
 
-def run(headless=False, frames=0, capture=None, record_gif=None):
+def run(headless=False, frames=0, capture=None, record_gif=None, memory_path=":memory:", timeout_s=1.0):
     import os
     if headless:
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -230,19 +245,21 @@ def run(headless=False, frames=0, capture=None, record_gif=None):
         proj = trace.init()
         if proj:
             print(f"[weave] tracing to '{proj}'")
-    from games.stealth.game import DecisionService
     pygame.init()
     screen = pygame.display.set_mode((W, H))
     pygame.display.set_caption("Instinct learns the player. The other NPC never does.")
     fonts = build_fonts()
     clock = pygame.time.Clock()
-    service = DecisionService()
+    brain = Brain(GUARD_ACTIONS, instructions=INSTRUCTIONS, fallback=FALLBACK,
+                  memory=memory_path, timeout_s=timeout_s, trace=trace.is_on())
 
-    def fresh():
-        memory.reset("instinct_p")
-        memory.reset("static_p")
-        return (Side("Instinct", C_INSTINCT, "instinct_p", True),
-                Side("Static NPC", C_STATIC, "static_p", False))
+    def fresh(wipe=False):
+        if wipe:
+            brain.forget("instinct_p")
+        brain.forget("static_p")  # the no-memory side never keeps anything
+        left = Side("Learns the player", C_INSTINCT, "instinct_p", True)
+        left.lessons = brain.lessons("instinct_p")  # already learned, e.g. before a restart
+        return left, Side("No memory", C_STATIC, "static_p", False)
 
     left, right = fresh()
     round_no = 1
@@ -255,12 +272,12 @@ def run(headless=False, frames=0, capture=None, record_gif=None):
             if e.type == pygame.QUIT or (e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE):
                 running = False
             elif e.type == pygame.KEYDOWN and e.key == pygame.K_SPACE:
-                left, right = fresh()
+                left, right = fresh(wipe=True)
                 round_no, hold = 1, 0
 
         if round_no <= MAX_ROUNDS:
-            update_side(left, service)
-            update_side(right, service)
+            update_side(left, brain)
+            update_side(right, brain)
             if left.outcome and right.outcome:
                 hold += 1
                 if hold > 70:
@@ -274,11 +291,11 @@ def run(headless=False, frames=0, capture=None, record_gif=None):
         pygame.draw.line(screen, C_WALL_TOP, (ARENA_W + GAP // 2, 0), (ARENA_W + GAP // 2, H))
         for s, ox in ((left, 0), (right, ARENA_W + GAP)):
             screen.blit(fonts["title"].render(s.name, True, s.color), (ox + 14, 8))
-            tag = "remembers what fooled it" if s.learns else "no memory of past rounds"
+            tag = "remembers what fooled it" if s.learns else "same Brain, never calls learn()"
             screen.blit(fonts["xs"].render(tag, True, C_MUTE), (ox + 16 + fonts["title"].size(s.name)[0], 16))
             draw_arena(screen, fonts, s, ox)
             draw_panel(screen, fonts, s, ox, round_no)
-        rlabel = f"round {min(round_no, MAX_ROUNDS)} / {MAX_ROUNDS}" if round_no <= MAX_ROUNDS else "done — SPACE to replay"
+        rlabel = f"round {min(round_no, MAX_ROUNDS)} / {MAX_ROUNDS}" if round_no <= MAX_ROUNDS else "done, SPACE to replay"
         rl = fonts["m"].render(rlabel, True, C_INK)
         screen.blit(rl, (W // 2 - rl.get_width() // 2, 12))
 
@@ -297,12 +314,13 @@ def run(headless=False, frames=0, capture=None, record_gif=None):
             pygame.display.flip()
         clock.tick(60)
         tick += 1
-    service.shutdown()
+    stats = brain.stats()
+    brain.close()
     pygame.quit()
     if headless:
         print(f"after {min(round_no-1, MAX_ROUNDS)} rounds -> times fooled: "
-              f"Instinct={left.fooled_count}, Static={right.fooled_count}  "
-              f"(instinct invest now {left.invest:.2f}, static {right.invest:.2f})")
+              f"learns={left.fooled_count}, no-memory={right.fooled_count}  "
+              f"(invest now {left.invest:.2f} vs {right.invest:.2f})  brain: {stats}")
     return 0
 
 
@@ -311,16 +329,19 @@ if __name__ == "__main__":
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--capture", default=None)
     ap.add_argument("--record-gif", default=None)
+    ap.add_argument("--memory", default=":memory:", help="SQLite file so learning survives restarts")
+    ap.add_argument("--timeout", type=float, default=1.0, help="Jev timeout in seconds")
     args = ap.parse_args()
+    opts = dict(memory_path=args.memory, timeout_s=args.timeout)
     if args.capture:
-        raise SystemExit(run(headless=True, frames=4000, capture=args.capture))
+        raise SystemExit(run(headless=True, frames=4000, capture=args.capture, **opts))
     if args.record_gif:
         from PIL import Image
         frames_list = []
-        run(headless=True, frames=6000, record_gif=frames_list)
+        run(headless=True, frames=6000, record_gif=frames_list, **opts)
         if frames_list:
             frames_list[0].save(args.record_gif, save_all=True, append_images=frames_list[1:],
                                 duration=100, loop=0, optimize=True)
             print(f"saved gif to {args.record_gif} ({len(frames_list)} frames)")
         raise SystemExit(0)
-    raise SystemExit(run(headless=args.selftest, frames=4000))
+    raise SystemExit(run(headless=args.selftest, frames=4000, **opts))
