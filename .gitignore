@@ -16,3 +16,8 @@ wandb/
 __marimo__/
 .DS_Store
 *.local
+
+# packaging
+*.egg-info/
+build/
+dist/
